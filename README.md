@@ -42,28 +42,80 @@ CLAUDE_MANAGED_ENVIRONMENT_ID=your_environment_id
 PORT=3010
 ```
 
-## How the application was developed
+## How the app was build
 
-The browser collects inputs; the Node host validates requests; the lesson implementation produces observable evidence. The architecture page walks through the real source with numbered steps, prerequisite configuration, source filenames and code excerpts.
+### 1. Reject competing writers before attributing turns
 
-### Lesson implementation
+concurrentInput represents a foreign writer. The early conflict result prevents this local demonstration from attributing the same conversation to two writers.
 
-[src/lesson.ts](https://github.com/luiscoco/Udemy-claude-managed-agents-lesson-c10-app/blob/main/src/lesson.ts)
+Source: [src/lesson.ts](src/lesson.ts#L15)
 
 ```typescript
-  async run(input) {
-
-const messages = list(input,"messages");
-if (messages.some(m=>typeof m!=="string" || !m.trim())) throw new Error("Each queued message must contain text");
-if (flag(input,"concurrentInput")) return report("conflict","Another writer invalidated exclusive turn attribution",{turns:0},["Admit one writer","Observe a foreign user event","Block queue advancement"]);
-const receipts = messages.map((message,index)=>({commandId:`cmd-${index+1}`,userEventId:`user-${index+1}`,message,status:"idle/end_turn"}));
-return report("passed","Serialized each admitted turn in one conversation",{turns:receipts.length,receipts},["Open one shared stream reader","Send exactly one queued message","Match the accepted user event ID","Confirm reusable idle before advancing"]);
-
-  }
-};
+if (flag(input, "concurrentInput"))
+  return report(
+    "conflict",
+    "Another writer invalidated exclusive turn attribution",
+    { turns: 0 },
+    ["Admit one writer", "Observe a foreign user event", "Block queue advancement"],
+  );
 ```
 
-Read the architecture page for the remaining source excerpts and explanations, including input handling and optional provider behavior. The diagram describes this application, rather than implying that an external integration has been implemented.
+### 2. Correlate each admitted message with a receipt
+
+Every message gets a command ID and an accepted-user-event ID. idle/end_turn is authored receipt data here; a real queue would need to observe that settled state before advancing.
+
+Source: [src/lesson.ts](src/lesson.ts#L16)
+
+```typescript
+const receipts = messages.map((message, index) => ({
+  commandId: `cmd-${index + 1}`,
+  userEventId: `user-${index + 1}`,
+  message,
+  status: "idle/end_turn",
+}));
+```
+
+### 3. Expose the serialized turn count
+
+The output counts receipts and retains their message bindings. There is no durable queue or provider dispatch in this reducer.
+
+Source: [src/lesson.ts](src/lesson.ts#L17)
+
+```typescript
+return report(
+  "passed",
+  "Serialized each admitted turn in one conversation",
+  { turns: receipts.length, receipts },
+  [
+    "Open one shared stream reader",
+    "Send exactly one queued message",
+    "Match the accepted user event ID",
+    "Confirm reusable idle before advancing",
+  ],
+);
+```
+
+### Check your understanding
+
+Run **Two correlated turns** in the application. Compare the result with these scenario expectations:
+
+```json
+{
+  "input": {
+    "messages": [
+      "Remember Aurora",
+      "What project?"
+    ],
+    "concurrentInput": false
+  },
+  "expectedOutcome": "passed",
+  "checkEvidence": {
+    "turns": 2
+  }
+}
+```
+
+Then try **Detect a competing writer**. Its expected outcome is `conflict`; identify the condition or evidence field that explains the difference.
 
 ## Validation
 
