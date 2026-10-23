@@ -1,0 +1,60 @@
+// Lesson C10: single-writer, serialized, ordinary text-only session turns.
+// No provider operations occur at import time.
+import Anthropic from "@anthropic-ai/sdk";
+import type { BetaManagedAgentsStreamSessionEvents as StreamEvent }
+  from "@anthropic-ai/sdk/resources/beta/sessions/events";
+
+export type HostState = { interrupted: boolean };
+export type TurnReply = { sessionId: string; userEventId: string; replies: string[] };
+
+export function createHostClient() {
+  return new Anthropic({ maxRetries: 0 });
+}
+
+// Preconditions: caller authorized the owned conversation, admitted this
+// command, confirmed an eligible idle session, and already opened the stream.
+// Exactly one writer and one shared iterator reader may be active.
+// Caller owns deadlines, durable command/effect ledgers and remote cleanup.
+export async function sendTurn(
+  client: Anthropic, sessionId: string, stream: AsyncIterator<StreamEvent>,
+  text: string, host: HostState
+): Promise<TurnReply> {
+  const sent = await client.beta.sessions.events.send(sessionId, {
+    events: [{ type: "user.message", content: [{ type: "text", text }] }]
+  }, { maxRetries: 0, timeout: 10000 });
+  const marker = sent.data?.find(e => e.type === "user.message");
+  if (!marker?.id) throw new Error("Submission uncertain; reconcile first");
+  const expectedId = marker.id;
+  let accepted = false;
+  const replies: string[] = [];
+  for (;;) {
+    const next = await stream.next();
+    if (next.done) throw new Error("Stream ended: incomplete");
+    const event = next.value;
+    if (event.type === "session.status_terminated")
+      throw new Error("Session terminated; inspect records");
+    if (!accepted) {
+      if (event.type === "user.message" && event.id === expectedId) accepted = true;
+      continue;
+    }
+    if (event.type === "user.message" && event.id !== expectedId)
+      throw new Error("Concurrent input: attribution is no longer exclusive");
+    if (event.type === "agent.message") {
+      for (const block of event.content)
+        if (block.type === "text") replies.push(block.text);
+    }
+    if (event.type === "session.status_idle") {
+      if (event.stop_reason.type === "end_turn" && !host.interrupted)
+        return { sessionId, userEventId: expectedId, replies };
+      throw new Error(`Stopped: ${event.stop_reason.type}; interruption=${host.interrupted}`);
+    }
+  }
+}
+
+// The queue calls this after correlated completion before advancing.
+export async function confirmReusableIdle(client: Anthropic, sessionId: string) {
+  const session = await client.beta.sessions.retrieve(sessionId, {}, {
+    maxRetries: 2, timeout: 3000
+  });
+  if (session.status !== "idle") throw new Error("No reusable idle session confirmed");
+}

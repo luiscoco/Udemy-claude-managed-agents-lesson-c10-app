@@ -1,0 +1,28 @@
+{
+  "source": "live-provider-commentary",
+  "sessionId": "sesn_01T2apCBoXNdhC98QQpt4nR4",
+  "answer": "This local experiment tested serializing turns in a multi-turn conversation by queuing messages and matching user event IDs before advancing. Each turn was admitted one at a time, confirming an idle/end_turn state before processing the next. The two-turn sequence (\"Remember Aurora\" \u2192 \"What project?\") passed, demonstrating orderly message queue progression within a single shared stream.",
+  "stopReason": "end_turn",
+  "eventTypes": [
+    "session.status_running",
+    "session.thread_status_running",
+    "user.message",
+    "span.model_request_start",
+    "agent.message",
+    "span.model_request_end",
+    "session.thread_status_idle",
+    "session.usage",
+    "session.status_idle"
+  ],
+  "requestUsage": [
+    {
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "input_tokens": 639,
+      "output_tokens": 82,
+      "speed": "standard"
+    }
+  ],
+  "experimentHash": "e3511111f209e6ba1f6f64908bea4e6d46f8582410423c1e665947076f3373f5",
+  "scope": "A real text-only model response about the local experiment. External integrations and the experiment's correctness are not certified by this response."
+}
